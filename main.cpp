@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
         std::cout << "Raster size is " << width << "x" << height << std::endl;
 
         GDALDataset *dst = dataset->GetDriver()->Create(outputFilename.c_str(), width, height, 1, GDT_Float32, papszOptions);
-        if (!dataset->GetSpatialRef()->IsEmpty()){
+        if (dataset->GetSpatialRef() != nullptr){
             dst->SetSpatialRef(dataset->GetSpatialRef());
             double geotransform[6];
             dataset->GetGeoTransform(geotransform);
