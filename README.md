@@ -1,6 +1,6 @@
-# Fast Image Filter
+# Fast Raster Filter
 
-A fast image filter of georeferenced raster DEMs. Mostly used within [ODM](https://github.com/OpenDroneMap/ODM).
+A fast median filter of georeferenced raster DEMs. Mostly used within [ODM](https://github.com/OpenDroneMap/ODM).
 
 ## License
 
