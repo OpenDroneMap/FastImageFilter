@@ -44,16 +44,19 @@ int main(int argc, char **argv) {
         const auto outputFilename = result["output"].as<std::string>();
         const auto windowSize = result["window-size"].as<int>();
         const auto radius = result["radius"].as<int>();
-        const auto cOpts = result["co"].as<std::vector<std::string> >();
         
         char **papszOptions = NULL;
-        for (auto &co : cOpts){
-            std::vector<std::string> kv = split(co, "=");
-            if (kv.size() == 2){
-                papszOptions = CSLSetNameValue(papszOptions, kv[0].c_str(), kv[1].c_str());
-            }else{
-                std::cerr << "Invalid --co " << co << std::endl;
-                exit(1);
+        
+        if (result.count("co") > 0){
+            const auto cOpts = result["co"].as<std::vector<std::string> >();
+            for (auto &co : cOpts){
+                std::vector<std::string> kv = split(co, "=");
+                if (kv.size() == 2){
+                    papszOptions = CSLSetNameValue(papszOptions, kv[0].c_str(), kv[1].c_str());
+                }else{
+                    std::cerr << "Invalid --co " << co << std::endl;
+                    exit(1);
+                }
             }
         }
 
@@ -77,10 +80,11 @@ int main(int argc, char **argv) {
         GDALDataset *dst = dataset->GetDriver()->Create(outputFilename.c_str(), width, height, 1, GDT_Float32, papszOptions);
         if (dataset->GetSpatialRef() != nullptr){
             dst->SetSpatialRef(dataset->GetSpatialRef());
-            double geotransform[6];
-            dataset->GetGeoTransform(geotransform);
-            dst->SetGeoTransform(geotransform);
         }
+
+        double geotransform[6];
+        dataset->GetGeoTransform(geotransform);
+        dst->SetGeoTransform(geotransform);
 
         GDALRasterBand *writeBand = dst->GetRasterBand(1);
         if (hasNoData){
