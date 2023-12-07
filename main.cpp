@@ -136,6 +136,9 @@ int main(int argc, char **argv) {
         #pragma omp parallel for collapse(2)
         for (int blockX = 0; blockX < subX; blockX++){
             for (int blockY = 0; blockY < subY; blockY++){
+                if (blockX == subX - 1) continue;
+                if (blockY == subY - 1) continue;
+
                 int sizeX = blockX == subX - 1 ? width - (paddedBlockSizeX * blockX) : paddedBlockSizeX;
                 int sizeY = blockY == subY - 1 ? height - (paddedBlockSizeY * blockY) : paddedBlockSizeY;
                 int padX = blockX == 0 ? 0 : pad;
