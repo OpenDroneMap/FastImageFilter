@@ -71,7 +71,8 @@ int main(int argc, char **argv) {
         GDALRasterBand *band = dataset->GetRasterBand(1);
         double nodata = band->GetNoDataValue(&hasNoData);
 
-        std::cout << "Raster size is " << width << "x" << height << std::endl;
+        std::cout << "Input: " << inputFilename << std::endl;
+        std::cout << "Size: " << width << "x" << height << std::endl;
 
         GDALDataset *dst = dataset->GetDriver()->Create(outputFilename.c_str(), width, height, 1, GDT_Float32, papszOptions);
         if (dataset->GetSpatialRef() != nullptr){
@@ -107,7 +108,11 @@ int main(int argc, char **argv) {
         float nanValue = std::numeric_limits<double>::quiet_NaN();
         size_t pxCount = blockSizeX * blockSizeY;
 
+        std::cout << "Blocks: " << numBlocks << std::endl;
         std::cout << "Smoothing...";
+        std::flush(std::cout);
+
+        size_t processed = 0;
 
         #pragma omp parallel for collapse(2)
         for (int blockX = 0; blockX < subX; blockX++){
@@ -133,22 +138,25 @@ int main(int argc, char **argv) {
                     exit(EXIT_FAILURE);
                 }
                 omp_unset_lock(&readLock);
-
+                
+                bool empty = true;
                 if (hasNoData){
                     for (size_t i = 0; i < pxCount; i++){
                         if (rasterPtr[i] == nodata){
                             rasterPtr[i] = nanValue;
                             nodataPtr[i] = 1;
-                        }
+                        }else empty = false;
                     }
-                }
+                }else empty = false;
 
-                median_filter_2d<float>(blockSizeX, blockSizeY, radius, radius, 0, rasterPtr, rasterPtr);
+                if (!empty){
+                    median_filter_2d<float>(blockSizeX, blockSizeY, radius, radius, 0, rasterPtr, rasterPtr);
 
-                if (hasNoData){
-                    for (size_t i = 0; i < pxCount; i++){
-                        if (nodataPtr[i]){
-                            rasterPtr[i] = nodata;
+                    if (hasNoData){
+                        for (size_t i = 0; i < pxCount; i++){
+                            if (nodataPtr[i]){
+                                rasterPtr[i] = nodata;
+                            }
                         }
                     }
                 }
@@ -161,15 +169,24 @@ int main(int argc, char **argv) {
                 }
                 omp_unset_lock(&writeLock);
 
-                std::cout << ".";
-                std::flush(std::cout);
+                #pragma omp atomic
+                processed++;
+
+                if (processed % 1000 == 0){
+                    #pragma omp critical
+                    {
+                        std::cout << processed << "...";
+                        std::flush(std::cout);
+                    }
+                }
             }
+
         }
 
         delete dst;
         delete dataset;
 
-        std::cout << " done" << std::endl << "Wrote " << outputFilename << std::endl;
+        std::cout << processed <<  "... done" << std::endl << "Wrote " << outputFilename << std::endl;
     }catch (std::exception &e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return EXIT_FAILURE;
