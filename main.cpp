@@ -2,7 +2,6 @@
 #include <limits>
 #include <cmath>
 #include <omp.h>
-#include <Eigen/Dense>
 
 #include "vendor/cxxopts.hpp"
 #include "vendor/mf2d/filter.hpp"
@@ -110,17 +109,15 @@ int main(int argc, char **argv) {
         int paddedBlockSizeX = blockSizeX + pad * 2;
         int paddedBlockSizeY = blockSizeY + pad * 2;
 
-
         int rasterDataBlocks = std::min(maxConcurrency, numBlocks);
-        //float *rasterData = new float[rasterDataBlocks * (blockSizeX + 1) * (blockSizeY + 1)];
-        std::vector<Eigen::MatrixXf *> rasterBuffers;
+        std::vector<float *> rasterBuffers;
         for (int i = 0; i < rasterDataBlocks; i++){
-            rasterBuffers.push_back(new Eigen::MatrixXf(paddedBlockSizeX, paddedBlockSizeY));
+            rasterBuffers.push_back(new float[paddedBlockSizeX * paddedBlockSizeY]);
         }
-        std::vector<Eigen::Matrix<uint8_t, Eigen::Dynamic, Eigen::Dynamic> *> nodataBuffers;
+        std::vector<uint8_t *> nodataBuffers;
         if (hasNoData){
             for (int i = 0; i < rasterDataBlocks; i++){
-                nodataBuffers.push_back(new Eigen::Matrix<uint8_t, Eigen::Dynamic, Eigen::Dynamic>(paddedBlockSizeX, paddedBlockSizeY));
+                nodataBuffers.push_back(new uint8_t[paddedBlockSizeX * paddedBlockSizeY]);
             }
         }
         
@@ -136,28 +133,29 @@ int main(int argc, char **argv) {
         #pragma omp parallel for collapse(2)
         for (int blockX = 0; blockX < subX; blockX++){
             for (int blockY = 0; blockY < subY; blockY++){
-                if (blockX == subX - 1) continue;
-                if (blockY == subY - 1) continue;
+                bool startX = blockX == 0;
+                bool startY = blockY == 0;
+                bool endX = blockX == subX - 1;
+                bool endY = blockY == subY - 1;
+                int padLeft = startX ? 0 : pad;
+                int padRight = endX ? 0 : pad;
+                int padTop = startY ? 0 : pad;
+                int padBottom = endY ? 0 : pad;
 
-                int sizeX = blockX == subX - 1 ? width - (paddedBlockSizeX * blockX) : paddedBlockSizeX;
-                int sizeY = blockY == subY - 1 ? height - (paddedBlockSizeY * blockY) : paddedBlockSizeY;
-                int padX = blockX == 0 ? 0 : pad;
-                int padY = blockY == 0 ? 0 : pad;
+                int sizeX = (endX ? width - (blockSizeX * blockX) : blockSizeX) + padLeft + padRight;
+                int sizeY = (endY ? height - (blockSizeY * blockY) : blockSizeY) + padTop + padBottom;
 
                 int t = omp_get_thread_num();
-                int xOffset = blockX * blockSizeX - padX;
-                int yOffset = blockY * blockSizeY - padY;
+                int xOffset = blockX * blockSizeX - padLeft;
+                int yOffset = blockY * blockSizeY - padTop;
 
-                Eigen::MatrixXf *rasterBuf = rasterBuffers[t];
-                Eigen::Matrix<uint8_t, Eigen::Dynamic, Eigen::Dynamic> *nodataBuf = nullptr;
+                float *rasterPtr = rasterBuffers[t];
                 uint8_t *nodataPtr = nullptr;
                 if (hasNoData) {
-                    nodataBuf = nodataBuffers[t];
-                    nodataBuf->setZero(paddedBlockSizeX, paddedBlockSizeY);
-                    nodataPtr = nodataBuf->data();
+                    nodataPtr = nodataBuffers[t];
+                    memset(nodataPtr, 0, sizeof(uint8_t) * paddedBlockSizeX * paddedBlockSizeY);
+                    memset(rasterPtr, nodata, sizeof(float) * paddedBlockSizeX * paddedBlockSizeY);
                 }
-
-                float *rasterPtr = rasterBuf->data();
 
                 omp_set_lock(&readLock);
                 if (band->RasterIO( GF_Read, xOffset, yOffset, sizeX, sizeY,
@@ -166,7 +164,7 @@ int main(int argc, char **argv) {
                     exit(EXIT_FAILURE);
                 }
                 omp_unset_lock(&readLock);
-                
+
                 bool empty = true;
                 if (hasNoData){
                     for (size_t i = 0; i < pxCount; i++){
@@ -178,7 +176,7 @@ int main(int argc, char **argv) {
                 }else empty = false;
 
                 if (!empty){
-                    median_filter_2d<float>(paddedBlockSizeX, paddedBlockSizeY, radius, radius, 0, rasterPtr, rasterPtr);
+                    median_filter_2d<float>(sizeX, sizeY, radius, radius, 0, rasterPtr, rasterPtr);
 
                     if (hasNoData){
                         for (size_t i = 0; i < pxCount; i++){
@@ -189,11 +187,12 @@ int main(int argc, char **argv) {
                     }
                 }
 
-                Eigen::MatrixXf withoutPad = rasterBuf->block(pad, pad, blockSizeX, blockSizeY);
+                int sizeXNoPad = sizeX - padLeft - padRight;
+                int sizeYNoPad = sizeY - padTop - padBottom;
 
                 omp_set_lock(&writeLock);
-                if (writeBand->RasterIO( GF_Write, xOffset + pad, yOffset + pad, sizeX - pad * 2, sizeY - pad * 2,
-                                        withoutPad.data(), sizeX - pad * 2, sizeY - pad * 2, GDT_Float32, 0, 0 ) == CE_Failure){
+                if (writeBand->RasterIO( GF_Write, xOffset + padLeft, yOffset + padTop, sizeXNoPad, sizeYNoPad,
+                                        rasterPtr + (sizeX * padTop) + padLeft, sizeXNoPad, sizeYNoPad, GDT_Float32, 0, sizeof(float) * sizeX) == CE_Failure){
                     std::cerr << "Cannot write raster data" << std::endl;
                     exit(EXIT_FAILURE);
                 }
