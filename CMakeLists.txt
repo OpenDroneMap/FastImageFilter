@@ -19,6 +19,10 @@ endif()
 find_package(OpenMP REQUIRED)
 find_package(GDAL REQUIRED)
 
+if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm64")
+  add_compile_definitions(ARM64)
+endif()
+
 include_directories(${GDAL_INCLUDE_DIR})
 
 add_executable(fastrasterfilter main.cpp vendor/mf2d/filter.cpp)

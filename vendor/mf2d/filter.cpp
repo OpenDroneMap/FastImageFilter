@@ -42,6 +42,8 @@ inline int __builtin_popcountll(unsigned long long x){
     // Returns left 8 bits of x + (x<<8) + (x<<16) + (x<<24) + ...
     return static_cast<int>((x * h01) >> 56);
 }
+#elif ARM64
+#include <arm_neon.h>
 #else
 #include <x86intrin.h>
 #endif
