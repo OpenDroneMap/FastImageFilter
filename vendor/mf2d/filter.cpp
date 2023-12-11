@@ -4,7 +4,49 @@
 #include <limits>
 #include <stdexcept>
 #include <stdint.h>
+
+#ifdef _WIN32
+#include <intrin.h>
+
+inline int __builtin_ctzll(unsigned long long mask){
+    unsigned long wh;
+    // Search from LSB to MSB for first set bit.
+    // Returns zero if no set bit is found.
+
+  // Win32 doesn't have _BitScanForward64 so emulate it with two 32 bit calls.
+  // Scan the Low Word.
+    if (_BitScanForward(&wh, static_cast<unsigned long>(mask)))
+        return static_cast<int>(wh);
+    // Scan the High Word.
+    if (_BitScanForward(&wh, static_cast<unsigned long>(mask >> 32)))
+        return static_cast<int>(wh + 32); // Create a bit offset from the LSB.
+
+    return 64;
+}
+
+inline int __builtin_popcountll(unsigned long long x){
+    // Binary: 0101...
+    static const unsigned long long m1 = 0x5555555555555555;
+    // Binary: 00110011..
+    static const unsigned long long m2 = 0x3333333333333333;
+    // Binary:  4 zeros,  4 ones ...
+    static const unsigned long long m4 = 0x0f0f0f0f0f0f0f0f;
+    // The sum of 256 to the power of 0,1,2,3...
+    static const unsigned long long h01 = 0x0101010101010101;
+    // Put count of each 2 bits into those 2 bits.
+    x -= (x >> 1) & m1;
+    // Put count of each 4 bits into those 4 bits.
+    x = (x & m2) + ((x >> 2) & m2);
+    // Put count of each 8 bits into those 8 bits.
+    x = (x + (x >> 4)) & m4;
+    // Returns left 8 bits of x + (x<<8) + (x<<16) + (x<<24) + ...
+    return static_cast<int>((x * h01) >> 56);
+}
+#elif ARM64
+#include <arm_neon.h>
+#else
 #include <x86intrin.h>
+#endif
 
 const uint64_t ONE64 = 1;
 
