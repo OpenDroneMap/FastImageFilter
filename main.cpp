@@ -177,12 +177,12 @@ int main(int argc, char **argv) {
 
                 if (!empty){
                     median_filter_2d<float>(sizeX, sizeY, radius, radius, 0, rasterPtr, rasterPtr);
+                }
 
-                    if (hasNoData){
-                        for (size_t i = 0; i < pxCount; i++){
-                            if (nodataPtr[i]){
-                                rasterPtr[i] = nodata;
-                            }
+                if (hasNoData){
+                    for (size_t i = 0; i < pxCount; i++){
+                        if (nodataPtr[i] || std::isnan(rasterPtr[i])){
+                            rasterPtr[i] = nodata;
                         }
                     }
                 }
