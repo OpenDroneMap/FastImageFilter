@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
         int hasNoData = FALSE;
 
         GDALRasterBand *band = dataset->GetRasterBand(1);
-        double nodata = band->GetNoDataValue(&hasNoData);
+        float nodata = static_cast<float>(band->GetNoDataValue(&hasNoData));
 
         std::cout << "Input: " << inputFilename << std::endl;
         std::cout << "Size: " << width << "x" << height << std::endl;
@@ -88,14 +88,14 @@ int main(int argc, char **argv) {
 
         GDALRasterBand *writeBand = dst->GetRasterBand(1);
         if (hasNoData){
-            writeBand->SetNoDataValue(nodata);
+            writeBand->SetNoDataValue(static_cast<double>(nodata));
         }
 
         int blockSizeX = (std::min)(windowSize, width);
         int blockSizeY = (std::min)(windowSize, height);
 
-        int subX = static_cast<int>(std::ceil(static_cast<double>(width) / static_cast<double>(blockSizeX)));
-        int subY = static_cast<int>(std::ceil(static_cast<double>(height) / static_cast<double>(blockSizeY)));
+        int subX = static_cast<int>(std::floor(static_cast<double>(width) / static_cast<double>(blockSizeX)));
+        int subY = static_cast<int>(std::floor(static_cast<double>(height) / static_cast<double>(blockSizeY)));
         int numBlocks = subX * subY;
 
         omp_lock_t readLock;
@@ -111,18 +111,19 @@ int main(int argc, char **argv) {
 
         int rasterDataBlocks = std::min(maxConcurrency, numBlocks);
         std::vector<float *> rasterBuffers;
+        size_t pxCount = 4 * paddedBlockSizeX * paddedBlockSizeY;
+
         for (int i = 0; i < rasterDataBlocks; i++){
-            rasterBuffers.push_back(new float[paddedBlockSizeX * paddedBlockSizeY]);
+            rasterBuffers.push_back(new float[pxCount]);
         }
         std::vector<uint8_t *> nodataBuffers;
         if (hasNoData){
             for (int i = 0; i < rasterDataBlocks; i++){
-                nodataBuffers.push_back(new uint8_t[paddedBlockSizeX * paddedBlockSizeY]);
+                nodataBuffers.push_back(new uint8_t[pxCount]);
             }
         }
         
         float nanValue = std::numeric_limits<double>::quiet_NaN();
-        size_t pxCount = paddedBlockSizeX * paddedBlockSizeY;
 
         std::cout << "Blocks: " << numBlocks << std::endl;
         std::cout << "Smoothing...";
@@ -153,8 +154,8 @@ int main(int argc, char **argv) {
                 uint8_t *nodataPtr = nullptr;
                 if (hasNoData) {
                     nodataPtr = nodataBuffers[t];
-                    memset(nodataPtr, 0, sizeof(uint8_t) * paddedBlockSizeX * paddedBlockSizeY);
-                    memset(rasterPtr, nodata, sizeof(float) * paddedBlockSizeX * paddedBlockSizeY);
+                    memset(nodataPtr, 0, sizeof(uint8_t) * pxCount);
+                    memset(rasterPtr, nodata, sizeof(float) * pxCount);
                 }
 
                 omp_set_lock(&readLock);
